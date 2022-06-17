@@ -10,9 +10,9 @@ Gerne möchten wir hier kurz hier die Struktur der hochgeladenen Daten erklären
 
 1. Readme-File mit kurzer Begrüssung und Aufbau der Repository --> readme
 2. Kompletter r-Code (möglicherweise für Import in eigene Umgebungen wie R-Studio, etc.) --> code_complete_rstudio
-3. ZIP-Ordner mit sämtlichen Dateien, welche für die Datenanalyse in r erstellt oder benötigt wurden -->
-4. Markdown-File als formatierte Ausgabedatei der Programmierung in R-Studio (r) --> R_Markdown_Auswertung-Bestelldaten-Primeo-Energie_final.pdf
-5. Masterliste aus Excel: Komplette Datenliste, welche als Grundlage für die Auswertungen in r dient --> MasterListe_final.xlsx
+3. Markdown-File als formatierte Ausgabedatei der Programmierung in R-Studio (r) --> R_Markdown_Auswertung-Bestelldaten-Primeo-Energie_final.pdf
+4. Masterliste aus Excel: Komplette Datenliste, welche als Grundlage für die Auswertungen in r dient --> MasterListe_final.xlsx
+5. ZIP-Ordner mit sämtlichen Dateien, welche für die Datenanalyse in r erstellt oder benötigt wurden --> Daten_R_Studio.zip
 
 
 
