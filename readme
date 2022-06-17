@@ -15,7 +15,6 @@ Gerne möchten wir hier kurz hier die Struktur der hochgeladenen Daten erklären
 5. ZIP-Ordner mit sämtlichen Dateien, welche für die Datenanalyse in r erstellt oder benötigt wurden --> Daten_R_Studio.zip
 
 
-
 WICHTIGER HINWEIS:
 Sollten die Programmierungen selbstständig simuliert werden sollen, müssen zuerst unbedingt die notwendigen Packages
 heruntergeladen werden und danach der Pfad der Excel-Datei entsprechend angepasst werden. Ansonsten werden die Daten
@@ -23,6 +22,8 @@ nicht korrekt geladen werden.
 
 Nun wünschen wir eine gute Lektüre!
 
+
+Viele liebe Grüsse,
 
 Projektteam
 Jasmin Hofstetter, Milovan Stevanovic, Janic Wittwer
