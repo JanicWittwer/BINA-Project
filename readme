@@ -8,11 +8,11 @@ Willkommen auf der Github-Repository unserer BINA-Projektarbeit.
 
 Gerne möchten wir hier kurz hier die Struktur der hochgeladenen Daten erklären.
 
-1. Readme-File: Kurze Begrüssung und Aufbau der Repository
-2. code_complete_rstudio: Kompletter r-Code (möglicherweise für Import in eigene Umgebungen wie R-Studio, etc.)
-3. ZIP-Ordner mit sämtlichen Dateien, welche für die Datenanalyse in r erstellt oder benötigt wurden.
-4. Markdown-File als formatierte Ausgabedatei der Programmierung in R-Studio (r).
-5. Masterliste aus Excel: Komplette Datenliste, welche als Grundlage für die Auswertungen in r dient.
+1. Readme-File mit kurzer Begrüssung und Aufbau der Repository --> readme
+2. Kompletter r-Code (möglicherweise für Import in eigene Umgebungen wie R-Studio, etc.) --> code_complete_rstudio
+3. ZIP-Ordner mit sämtlichen Dateien, welche für die Datenanalyse in r erstellt oder benötigt wurden -->
+4. Markdown-File als formatierte Ausgabedatei der Programmierung in R-Studio (r) --> 
+5. Masterliste aus Excel: Komplette Datenliste, welche als Grundlage für die Auswertungen in r dient -->
 
 
 
