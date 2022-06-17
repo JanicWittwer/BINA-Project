@@ -1,0 +1,1289 @@
+
+---
+title: "Auswertung Bestelldaten Primeo Energie"
+output: pdf_document
+date: '2022-06-17'
+classoption: a4paper
+---
+
+
+# General Imports
+
+Hier werden die notwendigen Packages für die Ausführungen geladen.
+
+```{r}
+#install.packages("readxl")
+library(readxl)
+#install.packages("ggplot2")
+library(ggplot2)
+```
+
+Diese Packages sind wichtig, um nachfolgende Funktionen auszuführen, welche nicht in R als Standard geladen sind. Konkret sind dies in unserem Fall die Excel-Importfunktion (readxl) und die GGPlot2-Grafikfunktion (ggplot2)
+
+
+# Import of Data
+
+Hier wird mit der Funktion Read-Excel die vorbereitete Datenliste aus Excel hochgeladen.
+
+
+```{r}
+df.orders <- read_excel("C:/Users/janic/OneDrive/Desktop/Daten_R_Studio/Import_für_R-Studio.xlsx")
+```
+
+
+# Inspecting Data
+
+Die komplette Datentabelle ist nun in R-Studio hochgeladen. Bevor wir die Daten auwwerten, möchten wir unsere Daten zuerst noch etwas genauer prüfen und inspizieren. Dies wird mit verschiedenen Standardfunktionen von R gemacht
+
+
+Dimension des vorhandenen Datenframes
+```{r}
+dim(df.orders)
+```
+
+
+Übersicht der verschiedenen Spalten
+```{r}
+colnames(df.orders)
+```
+
+
+Datenstruktur:
+```{r}
+str(df.orders)
+```
+
+
+Tabellen-Kopfbereich (Spaltentitel und erste Einträge)
+```{r}
+head(df.orders)
+```
+
+
+Tabellen-Fussbereich (letzte Einträge)
+```{r}
+tail(df.orders)
+```
+
+
+Detailierte Zusammenfassung pro Variable
+```{r}
+summary(df.orders)
+```
+
+
+Detailierte Zusammenfassung pro Variable
+```{r}
+class(df.orders)
+```
+
+
+#Data Preparation
+
+In diesem Schritt sollen die Daten weiter vorbereiten werden und fehlende, fehlerhafte und nicht benötigte Werte gefunden und bereinigt werden.
+
+
+##0-Werte in Spalte Reservierung
+Die 0-Werte in der Spalte Reservierung können ignoriert werden. Es handelt sich um die Einträge, wo keine Reservierungen im Voraus gemacht wurden. Entsprechend gibt es keine Reservationsnummer zum Beleg.
+
+
+##NA-Werte in Spalte Reservierungsdatum und Differenz_Datum
+Die Spalten Reservierungsdatum und Differenz_Datum haben beide viele NA-Werte drin. Es muss deshalb geprüft werden, wie diese NA-Werte interpretiert werden sollen. Zuerst soll mit der folgenden Funktion geprüft werden, um wie viele Werte pro Spalte es sich handelt.
+
+```{r}
+summary(df.orders$Reservierungsdatum)
+summary(df.orders$Differenz_Datum)
+```
+
+Die Anzahl NA sind identisch in den Spalten Reservierungsdatum und Differenz_Datum.Die oben genannten Einträge mit NA haben dabei durchaus ihre Berechtigung. Es handelt sich dabei um die Belege, welche ohne Reservierung im Lager bezogen wurden. Entsprechend kann auch keine Differenz zwischen den beiden Datum gezogen werden. Die Werte können demnach auf NA belassen werden. Die Daten sind lediglich dort relevant, wo auch effektiv Reservierungen gemacht wurden.
+
+
+##Ausreisser erkennen
+
+Ausreisser sind extreme Werte, welche vom Großteil der anderen Werte abweichen. Ausreißer sind nicht gleichbedeutend mit Fehlern. Sie sollten erkannt, aber nicht unbedingt entfernt werden. Ihre Einbeziehung in die Analyse ist eine statistische Entscheidung.
+
+Dazu sollen die Anzahl Tage der vorgängigen Reservierungsdauer angeschaut werden. In Absprache mit Primeo Energie wurde als Grenze für nicht plausible Ausreisser der Wert 500 Tage gewählt. Alle Werte, welche unter 500 Tagen sind, werden demnach für die weitere Datenanalyse berücksichtigt. Alle Werte, welche über den 500 Tagen liegen, sind nicht plausibel und werden entsprechend bereinigt.
+
+In der Programmierung hier wird die Tukey-Box-and-Whisker Methode zur Erkennung von Ausreißern häufig geeignet. Bei dieser Methode ist eine Beobachtung ein Ausreißer wenn sie größer ist als der sogenannte ``Whisker'' der Beobachtungsmenge. Der obere Whisker wird berechnet, indem zum dritten Quartil das 1,5-fache des Interquartilsbereichs addiert und auf die nächstgelegenen unteren Beobachtung. Der untere Whisker wird in gleicher Weise berechnet.
+
+Zuerst wird dazu das dritte Quartil berechnet, um anschliessend den Faktor herauszufinden, damit die Grenze der Anzahl Tage bei 500 liegt.
+
+```{r}
+summary(df.orders$Differenz_Datum)
+```
+
+Mit dem oben stehenden 3. Quartil wird dann der Faktor berechnet, welcher die Grenze für die AUsreisser bei 500 Tagen legt. Dieser Faktor wird dann für die Ausreisser-Funktion verwendet.
+
+```{r}
+## In diesem Fall hier mit 3. Quantil 5.0 und Faktor 100 = 500
+Ausreisser <- df.orders$Differenz_Datum
+boxplot.stats(df.orders$Differenz_Datum, coef = 100)$out
+```
+
+
+##Ausreisser bereinigen
+
+Die oben erkannten Ausreisser sollen nun bereinigt werden.
+
+Dazu wird das neue Dataframe df.orders.bereinigt erstellt, wo die betroffenen Zeilen im neuen Datenframe nicht mehr berücksichtigt werden.
+
+
+```{r}
+df.orders.ohne.Ausreisser <- df.orders[-c(6427, 6428, 6599, 6600, 23199), ]
+```
+
+
+##Definition Datenframes ohne Retouren
+
+Für die meisten Auswertungen werden die Retouren nicht benötigt. Bei den Retouren handelt es sich um die Anzahl der Materialien, welche nicht benötigt wurden und entsprechend wieder ins Lager zurückgebracht wurden. 
+
+Die Retouren werden aber ins Verhältnis mit den Gesamtbezügen gestellt.
+
+```{r}
+df.orders.bereinigt <- df.orders.ohne.Ausreisser[(df.orders.ohne.Ausreisser$Bewegungsart =="Ausgabe"),]
+```
+
+Das Dataframe df.orders.bereinigt bildet nun die Grundlage für die meisten folgenden Auswertungen.
+
+
+##Dataframes-Definitionen
+
+Definition Dataframes der Teams
+```{r}
+LBAU_Breitenbach  <- df.orders.bereinigt[(df.orders.bereinigt$Bezeichnung_Team =="LBAU_Breitenbach"),]
+LBAU_Dulliken  <- df.orders.bereinigt[(df.orders.bereinigt$Bezeichnung_Team =="LBAU_Dulliken"),]
+Oeff.Beleuchtung  <- df.orders.bereinigt[(df.orders.bereinigt$Bezeichnung_Team =="Öff.Beleuchtung"),]
+UW_STATION_1  <- df.orders.bereinigt[(df.orders.bereinigt$Bezeichnung_Team =="UW_STATION_1"),]
+LBAU_Muenchenstein  <- df.orders.bereinigt[(df.orders.bereinigt$Bezeichnung_Team =="LBAU_Münchenstein"),]
+LBAU_Therwil  <- df.orders.bereinigt[(df.orders.bereinigt$Bezeichnung_Team =="LBAU_Therwil"),]
+UW_STATION_2  <- df.orders.bereinigt[(df.orders.bereinigt$Bezeichnung_Team =="UW_STATION_2"),]
+Freileitungsbau  <- df.orders.bereinigt[(df.orders.bereinigt$Bezeichnung_Team =="Freileitungsbau"),]
+```
+
+
+Definition Dataframes der Bewegungsart
+```{r}
+Ausgabe  <- df.orders.ohne.Ausreisser[(df.orders.ohne.Ausreisser$Bewegungsart =="Ausgabe"),]
+Retoure  <- df.orders.ohne.Ausreisser[(df.orders.ohne.Ausreisser$Bewegungsart =="Retoure"),]
+```
+
+Bemerkung: Im obenstehenden Dataframe werden die Retouren inkludiert, da aufgezeigt werden soll, wie die Verteilung der Ausgaben versus Retouren ist.
+
+
+Definition Dataframes der Leistungsart
+```{r}
+Instandhaltungsauftrag  <- df.orders.bereinigt[(df.orders.bereinigt$Leistungsart =="Instandhaltungsauftrag"),]
+Investitionsauftrag  <- df.orders.bereinigt[(df.orders.bereinigt$Leistungsart =="Investitionsauftrag"),]
+```
+
+
+Definition Dataframes der Klassifizierung
+```{r}
+MM_HIBE  <- df.orders.bereinigt[(df.orders.bereinigt$Klassifizierung =="MM_HIBE"),]
+ZA  <- df.orders.bereinigt[(df.orders.bereinigt$Klassifizierung =="ZA"),]
+MM_BELEUCHTUNG  <- df.orders.bereinigt[(df.orders.bereinigt$Klassifizierung =="MM_BELEUCHTUNG"),]
+MM_SICHERUNGEN  <- df.orders.bereinigt[(df.orders.bereinigt$Klassifizierung =="MM_SICHERUNGEN"),]
+OEB_LAMMAT  <- df.orders.bereinigt[(df.orders.bereinigt$Klassifizierung =="OEB_LAMMAT"),]
+MM_KABELVERBINDUNG  <- df.orders.bereinigt[(df.orders.bereinigt$Klassifizierung =="MM_KABELVERBINDUNG"),]
+MM_SCHRUMPFMATERIA  <- df.orders.bereinigt[(df.orders.bereinigt$Klassifizierung =="MM_SCHRUMPFMATERIA"),]
+MM_KABEL  <- df.orders.bereinigt[(df.orders.bereinigt$Klassifizierung =="MM_KABEL"),]
+MM_ROHRMATERIAL  <- df.orders.bereinigt[(df.orders.bereinigt$Klassifizierung =="MM_ROHRMATERIAL"),]
+MM_SCHALTANLAGEN  <- df.orders.bereinigt[(df.orders.bereinigt$Klassifizierung =="MM_SCHALTANLAGEN"),]
+MM_KABELZUBEHOER  <- df.orders.bereinigt[(df.orders.bereinigt$Klassifizierung =="MM_KABELZUBEHOER"),]
+MM_KLEIDUNG_PSA  <- df.orders.bereinigt[(df.orders.bereinigt$Klassifizierung =="MM_KLEIDUNG_PSA"),]
+OEB_BETMAT  <- df.orders.bereinigt[(df.orders.bereinigt$Klassifizierung =="OEB_BETMAT"),]
+MM_STROMVERTEILUNG  <- df.orders.bereinigt[(df.orders.bereinigt$Klassifizierung =="MM_STROMVERTEILUNG"),]
+ZR  <- df.orders.bereinigt[(df.orders.bereinigt$Klassifizierung =="ZR"),]
+MM_ABDICHTMATERIAL  <- df.orders.bereinigt[(df.orders.bereinigt$Klassifizierung =="MM_ABDICHTMATERIAL"),]
+MM_KABELBEFESTIGUN  <- df.orders.bereinigt[(df.orders.bereinigt$Klassifizierung =="MM_KABELBEFESTIGUN"),]
+OEB_LEUMAT  <- df.orders.bereinigt[(df.orders.bereinigt$Klassifizierung =="OEB_LEUMAT"),]
+MM_FREILEITUNG  <- df.orders.bereinigt[(df.orders.bereinigt$Klassifizierung =="MM_FREILEITUNG"),]
+MM_METALLE  <- df.orders.bereinigt[(df.orders.bereinigt$Klassifizierung =="MM_METALLE"),]
+MM_ERDUNGSMATERIAL  <- df.orders.bereinigt[(df.orders.bereinigt$Klassifizierung =="MM_ERDUNGSMATERIAL"),]
+MM_INSTALLMAT  <- df.orders.bereinigt[(df.orders.bereinigt$Klassifizierung =="MM_INSTALLMAT"),]
+MM_SCHAECHTE  <- df.orders.bereinigt[(df.orders.bereinigt$Klassifizierung =="MM_SCHAECHTE"),]
+ZM  <- df.orders.bereinigt[(df.orders.bereinigt$Klassifizierung =="ZM"),]
+MM_BELEUCH_TRAEGER  <- df.orders.bereinigt[(df.orders.bereinigt$Klassifizierung =="MM_BELEUCH_TRAEGER"),]
+MM_TRANSFORMATOREN  <- df.orders.bereinigt[(df.orders.bereinigt$Klassifizierung =="MM_TRANSFORMATOREN"),]
+Nicht_zuweisbar  <- df.orders.bereinigt[(df.orders.bereinigt$Klassifizierung =="Nicht_zuweisbar"),]
+```
+
+
+
+# Datenanalyse
+
+Die Datenanalyse ist der eigentliche Inhalt der Arbeit in R-Studio für die vorliegende Arbeit.
+
+Zuerst werden für die weiter oben definierten Dataframes verschiedene Berechnungen angestellt. Konkret werden jeweils die Mittelwerte der Datumsdifferenz, der Median der Datumsdifferenz, die Summe der gefilterten Einträge, die Anzahl der Reservationen und die Anzahl der Adhoc-Materialbezüge berechnet.
+
+Dies geschieht für jeweils für die Teams (Auswahl aus den Teams), die Bewegungsarten, die Leistungsarten sowie die Klassifizierungen.
+
+Berechnungen der Differenzdaten - über alle Daten
+```{r}
+Mittelwert_Overall  <- mean(df.orders.bereinigt$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Median_Overall  <- median(df.orders.bereinigt$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Sum_Overall  <- sum(df.orders.bereinigt$Zähler_Materialbezüge, na.rm = TRUE)
+```
+
+
+Berechnungen pro Team
+```{r}
+Mittelwert_Team_LBAU_Breitenbach  <- mean(LBAU_Breitenbach$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Mittelwert_Team_LBAU_Dulliken  <- mean(LBAU_Dulliken$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Mittelwert_Team_Oeff.Beleuchtung  <- mean(Oeff.Beleuchtung$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Mittelwert_Team_UW_STATION_1  <- mean(UW_STATION_1$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Mittelwert_Team_LBAU_Muenchenstein  <- mean(LBAU_Muenchenstein$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Mittelwert_Team_LBAU_Therwil  <- mean(LBAU_Therwil$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Mittelwert_Team_UW_STATION_2  <- mean(UW_STATION_2$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Mittelwert_Team_Freileitungsbau  <- mean(Freileitungsbau$Differenz_Datum, trim = 0, na.rm = TRUE, )
+
+Median_Team_LBAU_Breitenbach  <- median(LBAU_Breitenbach$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Median_Team_LBAU_Dulliken  <- median(LBAU_Dulliken$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Median_Team_Oeff.Beleuchtung  <- median(Oeff.Beleuchtung$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Median_Team_UW_STATION_1  <- median(UW_STATION_1$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Median_Team_LBAU_Muenchenstein  <- median(LBAU_Muenchenstein$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Median_Team_LBAU_Therwil  <- median(LBAU_Therwil$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Median_Team_UW_STATION_2  <- median(UW_STATION_2$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Median_Team_Freileitungsbau  <- median(Freileitungsbau$Differenz_Datum, trim = 0, na.rm = TRUE, )
+
+Summe_Team_LBAU_Breitenbach  <- sum(LBAU_Breitenbach$Zähler_Materialbezüge, na.rm = TRUE)
+Summe_Team_LBAU_Dulliken  <- sum(LBAU_Dulliken$Zähler_Materialbezüge, na.rm = TRUE)
+Summe_Team_Oeff.Beleuchtung  <- sum(Oeff.Beleuchtung$Zähler_Materialbezüge, na.rm = TRUE)
+Summe_Team_UW_STATION_1  <- sum(UW_STATION_1$Zähler_Materialbezüge, na.rm = TRUE)
+Summe_Team_LBAU_Muenchenstein  <- sum(LBAU_Muenchenstein$Zähler_Materialbezüge, na.rm = TRUE)
+Summe_Team_LBAU_Therwil  <- sum(LBAU_Therwil$Zähler_Materialbezüge, na.rm = TRUE)
+Summe_Team_UW_STATION_2  <- sum(UW_STATION_2$Zähler_Materialbezüge, na.rm = TRUE)
+Summe_Team_Freileitungsbau  <- sum(Freileitungsbau$Zähler_Materialbezüge, na.rm = TRUE)
+
+Anzahl_Res_Team_LBAU_Breitenbach  <- sum(LBAU_Breitenbach$Zähler_Reservierungen, na.rm = TRUE)
+Anzahl_Res_Team_LBAU_Dulliken  <- sum(LBAU_Dulliken$Zähler_Reservierungen, na.rm = TRUE)
+Anzahl_Res_Team_Oeff.Beleuchtung  <- sum(Oeff.Beleuchtung$Zähler_Reservierungen, na.rm = TRUE)
+Anzahl_Res_Team_UW_STATION_1  <- sum(UW_STATION_1$Zähler_Reservierungen, na.rm = TRUE)
+Anzahl_Res_Team_LBAU_Muenchenstein  <- sum(LBAU_Muenchenstein$Zähler_Reservierungen, na.rm = TRUE)
+Anzahl_Res_Team_LBAU_Therwil  <- sum(LBAU_Therwil$Zähler_Reservierungen, na.rm = TRUE)
+Anzahl_Res_Team_UW_STATION_2  <- sum(UW_STATION_2$Zähler_Reservierungen, na.rm = TRUE)
+Anzahl_Res_Team_Freileitungsbau  <- sum(Freileitungsbau$Zähler_Reservierungen, na.rm = TRUE)
+
+Anzahl_Adhoc_Team_LBAU_Breitenbach  <- sum(LBAU_Breitenbach$Zähler_Adhoc, na.rm = TRUE)
+Anzahl_Adhoc_Team_LBAU_Dulliken  <- sum(LBAU_Dulliken$Zähler_Adhoc, na.rm = TRUE)
+Anzahl_Adhoc_Team_Oeff.Beleuchtung  <- sum(Oeff.Beleuchtung$Zähler_Adhoc, na.rm = TRUE)
+Anzahl_Adhoc_Team_UW_STATION_1  <- sum(UW_STATION_1$Zähler_Adhoc, na.rm = TRUE)
+Anzahl_Adhoc_Team_LBAU_Muenchenstein  <- sum(LBAU_Muenchenstein$Zähler_Adhoc, na.rm = TRUE)
+Anzahl_Adhoc_Team_LBAU_Therwil  <- sum(LBAU_Therwil$Zähler_Adhoc, na.rm = TRUE)
+Anzahl_Adhoc_Team_UW_STATION_2  <- sum(UW_STATION_2$Zähler_Adhoc, na.rm = TRUE)
+Anzahl_Adhoc_Team_Freileitungsbau  <- sum(Freileitungsbau$Zähler_Adhoc, na.rm = TRUE)
+
+```
+
+
+Berechnungen pro Bewegungsart
+```{r}
+Mittelwert_Bewegungsart_Ausgabe  <- mean(Ausgabe$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Mittelwert_Bewegungsart_Retoure  <- mean(Retoure$Differenz_Datum, trim = 0, na.rm = TRUE, )
+
+Median_Bewegungsart_Ausgabe  <- median(Ausgabe$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Median_Bewegungsart_Retoure  <- median(Retoure$Differenz_Datum, trim = 0, na.rm = TRUE, )
+
+Summe_Bewegungsart_Ausgabe  <- sum(Ausgabe$Zähler_Materialbezüge, na.rm = TRUE)
+Summe_Bewegungsart_Retoure  <- sum(Retoure$Zähler_Materialbezüge, na.rm = TRUE)
+
+Anzahl_Res_Bewegungsart_Ausgabe  <- sum(Ausgabe$Zähler_Reservierungen, na.rm = TRUE)
+Anzahl_Res_Bewegungsart_Retoure  <- sum(Retoure$Zähler_Reservierungen, na.rm = TRUE)
+
+Anzahl_Adhoc_Bewegungsart_Ausgabe  <- sum(Ausgabe$Zähler_Adhoc, na.rm = TRUE)
+Anzahl_Adhoc_Bewegungsart_Retoure  <- sum(Retoure$Zähler_Adhoc, na.rm = TRUE)
+```
+
+
+
+
+Berechnungen pro Leistungsart
+```{r}
+Mittelwert_Leistungsart_Instandhaltung  <- mean(Instandhaltungsauftrag$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Mittelwert_Leistungsart_Investition  <- mean(Investitionsauftrag$Differenz_Datum, trim = 0, na.rm = TRUE, )
+
+Median_Leistungsart_Instandhaltung  <- median(Instandhaltungsauftrag$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Median_Leistungsart_Investition  <- median(Investitionsauftrag$Differenz_Datum, trim = 0, na.rm = TRUE, )
+
+Summe_Leistungsart_Instandhaltung  <- sum(Instandhaltungsauftrag$Zähler_Materialbezüge, na.rm = TRUE)
+Summe_Leistungsart_Investition  <- sum(Investitionsauftrag$Zähler_Materialbezüge, na.rm = TRUE)
+
+Anzahl_Res_Leistungsart_Instandhaltung  <- sum(Instandhaltungsauftrag$Zähler_Reservierungen, na.rm = TRUE)
+Anzahl_Res_Leistungsart_Investition  <- sum(Investitionsauftrag$Zähler_Reservierungen, na.rm = TRUE)
+
+Anzahl_Adhoc_Leistungsart_Instandhaltung  <- sum(Instandhaltungsauftrag$Zähler_Adhoc, na.rm = TRUE)
+Anzahl_Adhoc_Leistungsart_Investition  <- sum(Investitionsauftrag$Zähler_Adhoc, na.rm = TRUE)
+```
+
+
+
+
+Berechnung pro Klassifizierung
+```{r}
+Mittelwert_Klassifizierung_MM_HIBE  <- mean(MM_HIBE$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Mittelwert_Klassifizierung_ZA  <- mean(ZA$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Mittelwert_Klassifizierung_MM_BELEUCHTUNG  <- mean(MM_BELEUCHTUNG$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Mittelwert_Klassifizierung_MM_SICHERUNGEN  <- mean(MM_SICHERUNGEN$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Mittelwert_Klassifizierung_OEB_LAMMAT  <- mean(OEB_LAMMAT$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Mittelwert_Klassifizierung_MM_KABELVERBINDUNG  <- mean(MM_KABELVERBINDUNG$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Mittelwert_Klassifizierung_MM_SCHRUMPFMATERIA  <- mean(MM_SCHRUMPFMATERIA$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Mittelwert_Klassifizierung_MM_KABEL  <- mean(MM_KABEL$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Mittelwert_Klassifizierung_MM_ROHRMATERIAL  <- mean(MM_ROHRMATERIAL$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Mittelwert_Klassifizierung_MM_SCHALTANLAGEN  <- mean(MM_SCHALTANLAGEN$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Mittelwert_Klassifizierung_MM_KABELZUBEHOER  <- mean(MM_KABELZUBEHOER$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Mittelwert_Klassifizierung_MM_KLEIDUNG_PSA  <- mean(MM_KLEIDUNG_PSA$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Mittelwert_Klassifizierung_OEB_BETMAT  <- mean(OEB_BETMAT$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Mittelwert_Klassifizierung_MM_STROMVERTEILUNG  <- mean(MM_STROMVERTEILUNG$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Mittelwert_Klassifizierung_ZR  <- mean(ZR$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Mittelwert_Klassifizierung_MM_ABDICHTMATERIAL  <- mean(MM_ABDICHTMATERIAL$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Mittelwert_Klassifizierung_MM_KABELBEFESTIGUN  <- mean(MM_KABELBEFESTIGUN$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Mittelwert_Klassifizierung_OEB_LEUMAT  <- mean(OEB_LEUMAT$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Mittelwert_Klassifizierung_MM_FREILEITUNG  <- mean(MM_FREILEITUNG$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Mittelwert_Klassifizierung_MM_METALLE  <- mean(MM_METALLE$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Mittelwert_Klassifizierung_MM_ERDUNGSMATERIAL  <- mean(MM_ERDUNGSMATERIAL$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Mittelwert_Klassifizierung_MM_INSTALLMAT  <- mean(MM_INSTALLMAT$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Mittelwert_Klassifizierung_MM_SCHAECHTE  <- mean(MM_SCHAECHTE$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Mittelwert_Klassifizierung_ZM  <- mean(ZM$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Mittelwert_Klassifizierung_MM_BELEUCH_TRAEGER  <- mean(MM_BELEUCH_TRAEGER$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Mittelwert_Klassifizierung_MM_TRANSFORMATOREN  <- mean(MM_TRANSFORMATOREN$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Mittelwert_Klassifizierung_Nicht_zuweisbar  <- mean(Nicht_zuweisbar$Differenz_Datum, trim = 0, na.rm = TRUE, )
+
+Median_Klassifizierung_MM_HIBE  <- median(MM_HIBE$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Median_Klassifizierung_ZA  <- median(ZA$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Median_Klassifizierung_MM_BELEUCHTUNG  <- median(MM_BELEUCHTUNG$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Median_Klassifizierung_MM_SICHERUNGEN  <- median(MM_SICHERUNGEN$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Median_Klassifizierung_OEB_LAMMAT  <- median(OEB_LAMMAT$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Median_Klassifizierung_MM_KABELVERBINDUNG  <- median(MM_KABELVERBINDUNG$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Median_Klassifizierung_MM_SCHRUMPFMATERIA  <- median(MM_SCHRUMPFMATERIA$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Median_Klassifizierung_MM_KABEL  <- median(MM_KABEL$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Median_Klassifizierung_MM_ROHRMATERIAL  <- median(MM_ROHRMATERIAL$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Median_Klassifizierung_MM_SCHALTANLAGEN  <- median(MM_SCHALTANLAGEN$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Median_Klassifizierung_MM_KABELZUBEHOER  <- median(MM_KABELZUBEHOER$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Median_Klassifizierung_MM_KLEIDUNG_PSA  <- median(MM_KLEIDUNG_PSA$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Median_Klassifizierung_OEB_BETMAT  <- median(OEB_BETMAT$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Median_Klassifizierung_MM_STROMVERTEILUNG  <- median(MM_STROMVERTEILUNG$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Median_Klassifizierung_ZR  <- median(ZR$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Median_Klassifizierung_MM_ABDICHTMATERIAL  <- median(MM_ABDICHTMATERIAL$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Median_Klassifizierung_MM_KABELBEFESTIGUN  <- median(MM_KABELBEFESTIGUN$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Median_Klassifizierung_OEB_LEUMAT  <- median(OEB_LEUMAT$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Median_Klassifizierung_MM_FREILEITUNG  <- median(MM_FREILEITUNG$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Median_Klassifizierung_MM_METALLE  <- median(MM_METALLE$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Median_Klassifizierung_MM_ERDUNGSMATERIAL  <- median(MM_ERDUNGSMATERIAL$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Median_Klassifizierung_MM_INSTALLMAT  <- median(MM_INSTALLMAT$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Median_Klassifizierung_MM_SCHAECHTE  <- median(MM_SCHAECHTE$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Median_Klassifizierung_ZM  <- median(ZM$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Median_Klassifizierung_MM_BELEUCH_TRAEGER  <- median(MM_BELEUCH_TRAEGER$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Median_Klassifizierung_MM_TRANSFORMATOREN  <- median(MM_TRANSFORMATOREN$Differenz_Datum, trim = 0, na.rm = TRUE, )
+Median_Klassifizierung_Nicht_zuweisbar  <- median(Nicht_zuweisbar$Differenz_Datum, trim = 0, na.rm = TRUE, )
+
+Summe_Klassifizierung_MM_HIBE  <- sum(MM_HIBE$Zähler_Materialbezüge, na.rm = TRUE)
+Summe_Klassifizierung_ZA  <- sum(ZA$Zähler_Materialbezüge, na.rm = TRUE)
+Summe_Klassifizierung_MM_BELEUCHTUNG  <- sum(MM_BELEUCHTUNG$Zähler_Materialbezüge, na.rm = TRUE)
+Summe_Klassifizierung_MM_SICHERUNGEN  <- sum(MM_SICHERUNGEN$Zähler_Materialbezüge, na.rm = TRUE)
+Summe_Klassifizierung_OEB_LAMMAT  <- sum(OEB_LAMMAT$Zähler_Materialbezüge, na.rm = TRUE)
+Summe_Klassifizierung_MM_KABELVERBINDUNG  <- sum(MM_KABELVERBINDUNG$Zähler_Materialbezüge, na.rm = TRUE)
+Summe_Klassifizierung_MM_SCHRUMPFMATERIA  <- sum(MM_SCHRUMPFMATERIA$Zähler_Materialbezüge, na.rm = TRUE)
+Summe_Klassifizierung_MM_KABEL  <- sum(MM_KABEL$Zähler_Materialbezüge, na.rm = TRUE)
+Summe_Klassifizierung_MM_ROHRMATERIAL  <- sum(MM_ROHRMATERIAL$Zähler_Materialbezüge, na.rm = TRUE)
+Summe_Klassifizierung_MM_SCHALTANLAGEN  <- sum(MM_SCHALTANLAGEN$Zähler_Materialbezüge, na.rm = TRUE)
+Summe_Klassifizierung_MM_KABELZUBEHOER  <- sum(MM_KABELZUBEHOER$Zähler_Materialbezüge, na.rm = TRUE)
+Summe_Klassifizierung_MM_KLEIDUNG_PSA  <- sum(MM_KLEIDUNG_PSA$Zähler_Materialbezüge, na.rm = TRUE)
+Summe_Klassifizierung_OEB_BETMAT  <- sum(OEB_BETMAT$Zähler_Materialbezüge, na.rm = TRUE)
+Summe_Klassifizierung_MM_STROMVERTEILUNG  <- sum(MM_STROMVERTEILUNG$Zähler_Materialbezüge, na.rm = TRUE)
+Summe_Klassifizierung_ZR  <- sum(ZR$Zähler_Materialbezüge, na.rm = TRUE)
+Summe_Klassifizierung_MM_ABDICHTMATERIAL  <- sum(MM_ABDICHTMATERIAL$Zähler_Materialbezüge, na.rm = TRUE)
+Summe_Klassifizierung_MM_KABELBEFESTIGUN  <- sum(MM_KABELBEFESTIGUN$Zähler_Materialbezüge, na.rm = TRUE)
+Summe_Klassifizierung_OEB_LEUMAT  <- sum(OEB_LEUMAT$Zähler_Materialbezüge, na.rm = TRUE)
+Summe_Klassifizierung_MM_FREILEITUNG  <- sum(MM_FREILEITUNG$Zähler_Materialbezüge, na.rm = TRUE)
+Summe_Klassifizierung_MM_METALLE  <- sum(MM_METALLE$Zähler_Materialbezüge, na.rm = TRUE)
+Summe_Klassifizierung_MM_ERDUNGSMATERIAL  <- sum(MM_ERDUNGSMATERIAL$Zähler_Materialbezüge, na.rm = TRUE)
+Summe_Klassifizierung_MM_INSTALLMAT  <- sum(MM_INSTALLMAT$Zähler_Materialbezüge, na.rm = TRUE)
+Summe_Klassifizierung_MM_SCHAECHTE  <- sum(MM_SCHAECHTE$Zähler_Materialbezüge, na.rm = TRUE)
+Summe_Klassifizierung_ZM  <- sum(ZM$Zähler_Materialbezüge, na.rm = TRUE)
+Summe_Klassifizierung_MM_BELEUCH_TRAEGER  <- sum(MM_BELEUCH_TRAEGER$Zähler_Materialbezüge, na.rm = TRUE)
+Summe_Klassifizierung_MM_TRANSFORMATOREN  <- sum(MM_TRANSFORMATOREN$Zähler_Materialbezüge, na.rm = TRUE)
+Summe_Klassifizierung_Nicht_zuweisbar  <- sum(Nicht_zuweisbar$Zähler_Materialbezüge, na.rm = TRUE)
+
+Anzahl_Res_Klassifizierung_MM_HIBE  <- sum(MM_HIBE$Zähler_Reservierungen, na.rm = TRUE)
+Anzahl_Res_Klassifizierung_ZA  <- sum(ZA$Zähler_Reservierungen, na.rm = TRUE)
+Anzahl_Res_Klassifizierung_MM_BELEUCHTUNG  <- sum(MM_BELEUCHTUNG$Zähler_Reservierungen, na.rm = TRUE)
+Anzahl_Res_Klassifizierung_MM_SICHERUNGEN  <- sum(MM_SICHERUNGEN$Zähler_Reservierungen, na.rm = TRUE)
+Anzahl_Res_Klassifizierung_OEB_LAMMAT  <- sum(OEB_LAMMAT$Zähler_Reservierungen, na.rm = TRUE)
+Anzahl_Res_Klassifizierung_MM_KABELVERBINDUNG  <- sum(MM_KABELVERBINDUNG$Zähler_Reservierungen, na.rm = TRUE)
+Anzahl_Res_Klassifizierung_MM_SCHRUMPFMATERIA  <- sum(MM_SCHRUMPFMATERIA$Zähler_Reservierungen, na.rm = TRUE)
+Anzahl_Res_Klassifizierung_MM_KABEL  <- sum(MM_KABEL$Zähler_Reservierungen, na.rm = TRUE)
+Anzahl_Res_Klassifizierung_MM_ROHRMATERIAL  <- sum(MM_ROHRMATERIAL$Zähler_Reservierungen, na.rm = TRUE)
+Anzahl_Res_Klassifizierung_MM_SCHALTANLAGEN  <- sum(MM_SCHALTANLAGEN$Zähler_Reservierungen, na.rm = TRUE)
+Anzahl_Res_Klassifizierung_MM_KABELZUBEHOER  <- sum(MM_KABELZUBEHOER$Zähler_Reservierungen, na.rm = TRUE)
+Anzahl_Res_Klassifizierung_MM_KLEIDUNG_PSA  <- sum(MM_KLEIDUNG_PSA$Zähler_Reservierungen, na.rm = TRUE)
+Anzahl_Res_Klassifizierung_OEB_BETMAT  <- sum(OEB_BETMAT$Zähler_Reservierungen, na.rm = TRUE)
+Anzahl_Res_Klassifizierung_MM_STROMVERTEILUNG  <- sum(MM_STROMVERTEILUNG$Zähler_Reservierungen, na.rm = TRUE)
+Anzahl_Res_Klassifizierung_ZR  <- sum(ZR$Zähler_Reservierungen, na.rm = TRUE)
+Anzahl_Res_Klassifizierung_MM_ABDICHTMATERIAL  <- sum(MM_ABDICHTMATERIAL$Zähler_Reservierungen, na.rm = TRUE)
+Anzahl_Res_Klassifizierung_MM_KABELBEFESTIGUN  <- sum(MM_KABELBEFESTIGUN$Zähler_Reservierungen, na.rm = TRUE)
+Anzahl_Res_Klassifizierung_OEB_LEUMAT  <- sum(OEB_LEUMAT$Zähler_Reservierungen, na.rm = TRUE)
+Anzahl_Res_Klassifizierung_MM_FREILEITUNG  <- sum(MM_FREILEITUNG$Zähler_Reservierungen, na.rm = TRUE)
+Anzahl_Res_Klassifizierung_MM_METALLE  <- sum(MM_METALLE$Zähler_Reservierungen, na.rm = TRUE)
+Anzahl_Res_Klassifizierung_MM_ERDUNGSMATERIAL  <- sum(MM_ERDUNGSMATERIAL$Zähler_Reservierungen, na.rm = TRUE)
+Anzahl_Res_Klassifizierung_MM_INSTALLMAT  <- sum(MM_INSTALLMAT$Zähler_Reservierungen, na.rm = TRUE)
+Anzahl_Res_Klassifizierung_MM_SCHAECHTE  <- sum(MM_SCHAECHTE$Zähler_Reservierungen, na.rm = TRUE)
+Anzahl_Res_Klassifizierung_ZM  <- sum(ZM$Zähler_Reservierungen, na.rm = TRUE)
+Anzahl_Res_Klassifizierung_MM_BELEUCH_TRAEGER  <- sum(MM_BELEUCH_TRAEGER$Zähler_Reservierungen, na.rm = TRUE)
+Anzahl_Res_Klassifizierung_MM_TRANSFORMATOREN  <- sum(MM_TRANSFORMATOREN$Zähler_Reservierungen, na.rm = TRUE)
+Anzahl_Res_Klassifizierung_Nicht_zuweisbar  <- sum(Nicht_zuweisbar$Zähler_Reservierungen, na.rm = TRUE)
+
+Anzahl_Adhoc_Klassifizierung_MM_HIBE  <- sum(MM_HIBE$Zähler_Adhoc, na.rm = TRUE)
+Anzahl_Adhoc_Klassifizierung_ZA  <- sum(ZA$Zähler_Adhoc, na.rm = TRUE)
+Anzahl_Adhoc_Klassifizierung_MM_BELEUCHTUNG  <- sum(MM_BELEUCHTUNG$Zähler_Adhoc, na.rm = TRUE)
+Anzahl_Adhoc_Klassifizierung_MM_SICHERUNGEN  <- sum(MM_SICHERUNGEN$Zähler_Adhoc, na.rm = TRUE)
+Anzahl_Adhoc_Klassifizierung_OEB_LAMMAT  <- sum(OEB_LAMMAT$Zähler_Adhoc, na.rm = TRUE)
+Anzahl_Adhoc_Klassifizierung_MM_KABELVERBINDUNG  <- sum(MM_KABELVERBINDUNG$Zähler_Adhoc, na.rm = TRUE)
+Anzahl_Adhoc_Klassifizierung_MM_SCHRUMPFMATERIA  <- sum(MM_SCHRUMPFMATERIA$Zähler_Adhoc, na.rm = TRUE)
+Anzahl_Adhoc_Klassifizierung_MM_KABEL  <- sum(MM_KABEL$Zähler_Adhoc, na.rm = TRUE)
+Anzahl_Adhoc_Klassifizierung_MM_ROHRMATERIAL  <- sum(MM_ROHRMATERIAL$Zähler_Adhoc, na.rm = TRUE)
+Anzahl_Adhoc_Klassifizierung_MM_SCHALTANLAGEN  <- sum(MM_SCHALTANLAGEN$Zähler_Adhoc, na.rm = TRUE)
+Anzahl_Adhoc_Klassifizierung_MM_KABELZUBEHOER  <- sum(MM_KABELZUBEHOER$Zähler_Adhoc, na.rm = TRUE)
+Anzahl_Adhoc_Klassifizierung_MM_KLEIDUNG_PSA  <- sum(MM_KLEIDUNG_PSA$Zähler_Adhoc, na.rm = TRUE)
+Anzahl_Adhoc_Klassifizierung_OEB_BETMAT  <- sum(OEB_BETMAT$Zähler_Adhoc, na.rm = TRUE)
+Anzahl_Adhoc_Klassifizierung_MM_STROMVERTEILUNG  <- sum(MM_STROMVERTEILUNG$Zähler_Adhoc, na.rm = TRUE)
+Anzahl_Adhoc_Klassifizierung_ZR  <- sum(ZR$Zähler_Adhoc, na.rm = TRUE)
+Anzahl_Adhoc_Klassifizierung_MM_ABDICHTMATERIAL  <- sum(MM_ABDICHTMATERIAL$Zähler_Adhoc, na.rm = TRUE)
+Anzahl_Adhoc_Klassifizierung_MM_KABELBEFESTIGUN  <- sum(MM_KABELBEFESTIGUN$Zähler_Adhoc, na.rm = TRUE)
+Anzahl_Adhoc_Klassifizierung_OEB_LEUMAT  <- sum(OEB_LEUMAT$Zähler_Adhoc, na.rm = TRUE)
+Anzahl_Adhoc_Klassifizierung_MM_FREILEITUNG  <- sum(MM_FREILEITUNG$Zähler_Adhoc, na.rm = TRUE)
+Anzahl_Adhoc_Klassifizierung_MM_METALLE  <- sum(MM_METALLE$Zähler_Adhoc, na.rm = TRUE)
+Anzahl_Adhoc_Klassifizierung_MM_ERDUNGSMATERIAL  <- sum(MM_ERDUNGSMATERIAL$Zähler_Adhoc, na.rm = TRUE)
+Anzahl_Adhoc_Klassifizierung_MM_INSTALLMAT  <- sum(MM_INSTALLMAT$Zähler_Adhoc, na.rm = TRUE)
+Anzahl_Adhoc_Klassifizierung_MM_SCHAECHTE  <- sum(MM_SCHAECHTE$Zähler_Adhoc, na.rm = TRUE)
+Anzahl_Adhoc_Klassifizierung_ZM  <- sum(ZM$Zähler_Adhoc, na.rm = TRUE)
+Anzahl_Adhoc_Klassifizierung_MM_BELEUCH_TRAEGER  <- sum(MM_BELEUCH_TRAEGER$Zähler_Adhoc, na.rm = TRUE)
+Anzahl_Adhoc_Klassifizierung_MM_TRANSFORMATOREN  <- sum(MM_TRANSFORMATOREN$Zähler_Adhoc, na.rm = TRUE)
+Anzahl_Adhoc_Klassifizierung_Nicht_zuweisbar  <- sum(Nicht_zuweisbar$Zähler_Adhoc, na.rm = TRUE)
+```
+
+Die oben berechneten Werte bilden die Basis für die Visualisierungen im Anschluss.
+
+
+# Datenvisualisierungen
+
+Die Visualisierungen mit ggplot2 dienen dazu, die oben berechneten Werte auf anschauliche Art und Weise miteinander zu vergleichen. Zuerst wird dazu jeweils ein separates Datenset erstellt, welches die errechneten Werte mit den jeweiligen Namen der Werte verknüpft.
+
+Die Layers werden systematisch aufgebaut in den Visualisierungen und die einzelnen Zwischenresultate angezeigt.
+
+
+## Visualisierung zu Bewegungsart
+
+Die erste Visualisierung betrifft die Bewegungsart. Hier wird zwischen Ausgaben und Retouren unterschieden. Die Retouren sind für die folgenden Grafiken nicht relevant und wurden bereits zuvor im Datenset df.orders.bereinigt ausgeschlossen.
+
+```{r}
+bewegungsarten_names = c("Retoure",
+                       "Ausgabe"
+                       )
+
+sum_bewegungsarten = c(Summe_Bewegungsart_Retoure,
+                      Summe_Bewegungsart_Ausgabe
+                      )
+
+
+df.bewegungsarten.sum.plot = data.frame(sum_bewegungsarten,bewegungsarten_names)
+
+```
+
+Visualisierung Bewegungsart
+```{r}
+ggplot(data=df.bewegungsarten.sum.plot, aes(x=sum_bewegungsarten, y=bewegungsarten_names)) +
+  geom_bar(stat="identity", color="cornflowerblue", fill="cornflowerblue", width=0.8)+
+  geom_text(aes(label=sum_bewegungsarten), hjust=1, size=3.5)+
+  theme_minimal()
+last_plot() + ggtitle("Aufteilung Ausgaben vs. Retouren")
+last_plot() + theme(plot.title=element_text(size = 14, face="bold"))
+last_plot() + theme(axis.title.x = element_text(size =15))
+last_plot() + theme(axis.title.y = element_text(size =15))
+last_plot() + xlab("Anzahl")
+last_plot() + ylab("Bewegungsart")
+last_plot() + theme(legend.position = "top", legend.direction="horizontal")
+last_plot() + theme(axis.text.x = element_text(size = 12, hjust=1))
+```
+
+
+## Visualisierung zu Teams
+
+Für die Teams wurden verschiedene Auswertungen gemacht, wo die oben berechneten Werte miteinander verglichen wurden.
+
+Zuerst wurden dazu die Dataframes definiert, danach die Visualisierungen erstellt.
+
+Definition Datenframe Anzahl Materialbezüge pro Team
+```{r}
+team_names = c("Freileitungsbau",
+               "LBAU_Breitenbach",
+               "LBAU_Dulliken",
+               "LBAU_Muenchenstein",
+               "LBAU_Therwil",
+               "Oeff.Beleuchtung",
+               "UW_Station_1",
+               "UW_Station_2"
+               )
+Summe_teams = c(Summe_Team_Freileitungsbau,
+               Summe_Team_LBAU_Breitenbach,
+               Summe_Team_LBAU_Dulliken,
+               Summe_Team_LBAU_Muenchenstein,
+               Summe_Team_LBAU_Therwil,
+               Summe_Team_Oeff.Beleuchtung,
+               Summe_Team_UW_STATION_1,
+               Summe_Team_UW_STATION_2
+               )
+
+
+df.teams.sum.plot = data.frame(Summe_teams,team_names)
+```
+
+
+
+Definition Datenframe Mittelwert Differenz Reservation und Materialbezug pro Team
+```{r}
+team_names = c("Freileitungsbau",
+               "LBAU_Breitenbach",
+               "LBAU_Dulliken",
+               "LBAU_Muenchenstein",
+               "LBAU_Therwil",
+               "Oeff.Beleuchtung",
+               "UW_Station_1",
+               "UW_Station_2"
+               )
+mean_teams = c(Mittelwert_Team_Freileitungsbau,
+               Mittelwert_Team_LBAU_Breitenbach,
+               Mittelwert_Team_LBAU_Dulliken,
+               Mittelwert_Team_LBAU_Muenchenstein,
+               Mittelwert_Team_LBAU_Therwil,
+               Mittelwert_Team_Oeff.Beleuchtung,
+               Mittelwert_Team_UW_STATION_1,
+               Mittelwert_Team_UW_STATION_2
+               )
+
+
+df.teams.mean.plot = data.frame(round(mean_teams, digits = 2),team_names)
+```
+
+
+Definition Datenframe Median Differenz Reservation und Materialbezug pro Team
+```{r}
+team_names = c("Freileitungsbau",
+               "LBAU_Breitenbach",
+               "LBAU_Dulliken",
+               "LBAU_Muenchenstein",
+               "LBAU_Therwil",
+               "Oeff.Beleuchtung",
+               "UW_Station_1",
+               "UW_Station_2"
+               )
+median_teams = c(Median_Team_Freileitungsbau,
+               Median_Team_LBAU_Breitenbach,
+               Median_Team_LBAU_Dulliken,
+               Median_Team_LBAU_Muenchenstein,
+               Median_Team_LBAU_Therwil,
+               Median_Team_Oeff.Beleuchtung,
+               Median_Team_UW_STATION_1,
+               Median_Team_UW_STATION_2
+               )
+
+
+df.teams.median.plot = data.frame(median_teams,team_names)
+```
+
+
+Definition Datenframe Anzahl Reservationen pro Team
+```{r}
+team_names = c("Freileitungsbau",
+               "LBAU_Breitenbach",
+               "LBAU_Dulliken",
+               "LBAU_Muenchenstein",
+               "LBAU_Therwil",
+               "Oeff.Beleuchtung",
+               "UW_Station_1",
+               "UW_Station_2"
+               )
+Anzahl_Res_teams = c(Anzahl_Res_Team_Freileitungsbau,
+               Anzahl_Res_Team_LBAU_Breitenbach,
+               Anzahl_Res_Team_LBAU_Dulliken,
+               Anzahl_Res_Team_LBAU_Muenchenstein,
+               Anzahl_Res_Team_LBAU_Therwil,
+               Anzahl_Res_Team_Oeff.Beleuchtung,
+               Anzahl_Res_Team_UW_STATION_1,
+               Anzahl_Res_Team_UW_STATION_2
+               )
+
+
+df.teams.anzahl.res.plot = data.frame(Anzahl_Res_teams,team_names)
+```
+
+
+Definition Datenframe Anzahl Adhoc-Bezüge pro Team
+```{r}
+team_names = c("Freileitungsbau",
+               "LBAU_Breitenbach",
+               "LBAU_Dulliken",
+               "LBAU_Muenchenstein",
+               "LBAU_Therwil",
+               "Oeff.Beleuchtung",
+               "UW_Station_1",
+               "UW_Station_2"
+               )
+Anzahl_Adhoc_teams = c(Anzahl_Adhoc_Team_Freileitungsbau,
+               Anzahl_Adhoc_Team_LBAU_Breitenbach,
+               Anzahl_Adhoc_Team_LBAU_Dulliken,
+               Anzahl_Adhoc_Team_LBAU_Muenchenstein,
+               Anzahl_Adhoc_Team_LBAU_Therwil,
+               Anzahl_Adhoc_Team_Oeff.Beleuchtung,
+               Anzahl_Adhoc_Team_UW_STATION_1,
+               Anzahl_Adhoc_Team_UW_STATION_2
+               )
+
+
+df.teams.anzahl.adhoc.plot = data.frame(Anzahl_Adhoc_teams,team_names)
+```
+
+
+```{r}
+ggplot(data=df.teams.sum.plot, aes(x=team_names, y=Summe_teams)) +
+  geom_bar(stat="identity", color="cornflowerblue", fill="cornflowerblue", width=0.8)+
+  geom_text(aes(label=Summe_teams), vjust=-0.3, size=3.5)+
+  theme_minimal()
+last_plot() + ggtitle("Anzahl Materialbezüge pro Team")
+last_plot() + theme(plot.title=element_text(size = 14, face="bold"))
+last_plot() + theme(axis.title.x = element_text(size =15))
+last_plot() + theme(axis.title.y = element_text(size =15))
+last_plot() + xlab("Team")
+last_plot() + ylab("Anzahl Materialbezüge")
+last_plot() + theme(legend.position = "top", legend.direction="horizontal")
+last_plot() + theme(axis.text.x = element_text(size = 12, angle=90, hjust=1))
+```
+
+
+```{r}
+ggplot(data=df.teams.mean.plot, aes(x=team_names, y=round.mean_teams..digits...2.)) +
+  geom_bar(stat="identity", color="cornflowerblue", fill="cornflowerblue", width=0.8)+
+  geom_text(aes(label=round.mean_teams..digits...2.), vjust=-0.3, size=3.5)+
+  theme_minimal()
+last_plot() + ggtitle("Mittelwerte der Datumsdifferenz zwischen Reservation und Bezug pro Team")
+last_plot() + theme(plot.title=element_text(size = 14, face="bold"))
+last_plot() + theme(axis.title.x = element_text(size =15))
+last_plot() + theme(axis.title.y = element_text(size =15))
+last_plot() + xlab("Team")
+last_plot() + ylab("Mittelwert der Datumsdifferenz zwischen Reservation und Bezug")
+last_plot() + theme(legend.position = "top", legend.direction="horizontal")
+last_plot() + theme(axis.text.x = element_text(size = 12, angle=90, hjust=1))
+```
+
+
+```{r}
+ggplot(data=df.teams.median.plot, aes(x=team_names, y=median_teams)) +
+  geom_bar(stat="identity", color="cornflowerblue", fill="cornflowerblue", width=0.8)+
+  geom_text(aes(label=median_teams), vjust=-0.3, size=3.5)+
+  theme_minimal()
+last_plot() + ggtitle("Median der Datumsdifferenz zwischen Reservation und Bezug pro Team")
+last_plot() + theme(plot.title=element_text(size = 14, face="bold"))
+last_plot() + theme(axis.title.x = element_text(size =15))
+last_plot() + theme(axis.title.y = element_text(size =15))
+last_plot() + xlab("Team")
+last_plot() + ylab("Median der Datumsdifferenz zwischen Reservation und Bezug")
+last_plot() + theme(legend.position = "top", legend.direction="horizontal")
+last_plot() + theme(axis.text.x = element_text(size = 12, angle=90, hjust=1))
+```
+
+
+```{r}
+ggplot(data=df.teams.anzahl.res.plot, aes(x=team_names, y=Anzahl_Res_teams)) +
+  geom_bar(stat="identity", color="cornflowerblue", fill="cornflowerblue", width=0.8)+
+  geom_text(aes(label=Anzahl_Res_teams), vjust=-0.3, size=3.5)+
+  theme_minimal()
+last_plot() + ggtitle("Anzahl Reservationen pro Team")
+last_plot() + theme(plot.title=element_text(size = 14, face="bold"))
+last_plot() + theme(axis.title.x = element_text(size =15))
+last_plot() + theme(axis.title.y = element_text(size =15))
+last_plot() + xlab("Team")
+last_plot() + ylab("Anzahl Reservationen")
+last_plot() + theme(legend.position = "top", legend.direction="horizontal")
+last_plot() + theme(axis.text.x = element_text(size = 12, angle=90, hjust=1))
+```
+
+
+```{r}
+ggplot(data=df.teams.anzahl.adhoc.plot, aes(x=team_names, y=Anzahl_Adhoc_teams)) +
+  geom_bar(stat="identity", color="cornflowerblue", fill="cornflowerblue", width=0.8)+
+  geom_text(aes(label=Anzahl_Adhoc_teams), vjust=-0.3, size=3.5)+
+  theme_minimal()
+last_plot() + ggtitle("Anzahl Adhoc-Bezüge pro Team")
+last_plot() + theme(plot.title=element_text(size = 14, face="bold"))
+last_plot() + theme(axis.title.x = element_text(size =15))
+last_plot() + theme(axis.title.y = element_text(size =15))
+last_plot() + xlab("Team")
+last_plot() + ylab("Anzahl Adhoc-Materialbezüge pro Team")
+last_plot() + theme(legend.position = "top", legend.direction="horizontal")
+last_plot() + theme(axis.text.x = element_text(size = 12, angle=90, hjust=1))
+```
+
+
+## Visualisierung Leistungsarten
+
+Für die Leistungsarten wurden ebenfalls verschiedene Auswertungen gemacht, wo die oben berechneten Werte miteinander verglichen wurden. Auch hier wurden zuerst die Dataframes definiert, danach die Visualisierungen erstellt.
+
+Definition Datenframe Anzahl Materialbezüge pro Leistungsart
+```{r}
+leistungsart_names = c("Instandhaltung",
+                       "Investition"
+                       )
+
+sum_leistungsarten = c(Summe_Leistungsart_Instandhaltung,
+                        Summe_Leistungsart_Investition
+                        )
+
+
+df.leistungsarten.sum.plot = data.frame(sum_leistungsarten,leistungsart_names)
+```
+
+
+Definition Datenframe Mittelwert Differenz Reservation und Materialbezug pro Leistungsart
+```{r}
+leistungsart_names = c("Instandhaltung",
+                       "Investition"
+                       )
+
+mean_leistungsarten = c(Mittelwert_Leistungsart_Instandhaltung,
+                        Mittelwert_Leistungsart_Investition
+                        )
+
+
+df.leistungsarten.mean.plot = data.frame(mean_leistungsarten,leistungsart_names)
+```
+
+
+Definition Datenframe Median Differenz Reservation und Materialbezug pro Leistungsart
+```{r}
+leistungsart_names = c("Instandhaltung",
+                       "Investition"
+                       )
+
+median_leistungsarten = c(Median_Leistungsart_Instandhaltung,
+                        Median_Leistungsart_Investition
+                        )
+
+
+df.leistungsarten.median.plot = data.frame(median_leistungsarten,leistungsart_names)
+```
+
+
+Definition Datenframe Anzahl Reservationen pro Leistungsart
+```{r}
+leistungsart_names = c("Instandhaltung",
+                       "Investition"
+                       )
+
+anzahl_res_leistungsarten = c(Anzahl_Res_Leistungsart_Instandhaltung,
+                        Anzahl_Res_Leistungsart_Investition
+                        )
+
+
+df.leistungsarten.anzahl.res.plot = data.frame(anzahl_res_leistungsarten,leistungsart_names)
+```
+
+
+Definition Datenframe Anzahl Adhoc-Bezüge pro Leistungsart
+```{r}
+leistungsart_names = c("Instandhaltung",
+                       "Investition"
+                       )
+
+anzahl_adhoc_leistungsarten = c(Anzahl_Adhoc_Leistungsart_Instandhaltung,
+                        Anzahl_Adhoc_Leistungsart_Investition
+                        )
+
+
+df.leistungsarten.anzahl.adhoc.plot = data.frame(anzahl_adhoc_leistungsarten,leistungsart_names)
+```
+
+
+```{r}
+ggplot(data=df.leistungsarten.sum.plot, aes(x=sum_leistungsarten, y=leistungsart_names)) +
+  geom_bar(stat="identity", color="cornflowerblue", fill="cornflowerblue", width=0.8)+
+  geom_text(aes(label=sum_leistungsarten), hjust=1, size=3.5)+
+  theme_minimal()
+last_plot() + ggtitle("Anzahl Materialbezüge pro Leistungsart")
+last_plot() + theme(plot.title=element_text(size = 14, face="bold"))
+last_plot() + theme(axis.title.x = element_text(size =15))
+last_plot() + theme(axis.title.y = element_text(size =15))
+last_plot() + xlab("Anzahl")
+last_plot() + ylab("Leistungssart")
+last_plot() + theme(legend.position = "top", legend.direction="horizontal")
+last_plot() + theme(axis.text.x = element_text(size = 12, hjust=1))
+```
+
+
+```{r}
+ggplot(data=df.leistungsarten.mean.plot, aes(x=mean_leistungsarten, y=leistungsart_names)) +
+  geom_bar(stat="identity", color="cornflowerblue", fill="cornflowerblue", width=0.8)+
+  geom_text(aes(label=mean_leistungsarten), hjust=1, size=3.5)+
+  theme_minimal()
+last_plot() + ggtitle("Mittelwerte der Datumsdifferenz zwischen Reservation und Bezug pro Leistungsart")
+last_plot() + theme(plot.title=element_text(size = 14, face="bold"))
+last_plot() + theme(axis.title.x = element_text(size =15))
+last_plot() + theme(axis.title.y = element_text(size =15))
+last_plot() + xlab("Mittelwert")
+last_plot() + ylab("Leistungssart")
+last_plot() + theme(legend.position = "top", legend.direction="horizontal")
+last_plot() + theme(axis.text.x = element_text(size = 12, hjust=1))
+```
+
+
+```{r}
+ggplot(data=df.leistungsarten.median.plot, aes(x=median_leistungsarten, y=leistungsart_names)) +
+  geom_bar(stat="identity", color="cornflowerblue", fill="cornflowerblue", width=0.8)+
+  geom_text(aes(label=median_leistungsarten), hjust=2, size=3.5)+
+  theme_minimal()
+last_plot() + ggtitle("Median der Datumsdifferenz zwischen Reservation und Bezug pro Leistungsart")
+last_plot() + theme(plot.title=element_text(size = 14, face="bold"))
+last_plot() + theme(axis.title.x = element_text(size =15))
+last_plot() + theme(axis.title.y = element_text(size =15))
+last_plot() + xlab("Median")
+last_plot() + ylab("Leistungssart")
+last_plot() + theme(legend.position = "top", legend.direction="horizontal")
+last_plot() + theme(axis.text.x = element_text(size = 12, hjust=1))
+```
+
+
+```{r}
+ggplot(data=df.leistungsarten.anzahl.res.plot, aes(x=anzahl_res_leistungsarten, y=leistungsart_names)) +
+  geom_bar(stat="identity", color="cornflowerblue", fill="cornflowerblue", width=0.8)+
+  geom_text(aes(label=anzahl_res_leistungsarten), hjust=2, size=3.5)+
+  theme_minimal()
+last_plot() + ggtitle("Anzahl Reservationen pro Leistungsart")
+last_plot() + theme(plot.title=element_text(size = 14, face="bold"))
+last_plot() + theme(axis.title.x = element_text(size =15))
+last_plot() + theme(axis.title.y = element_text(size =15))
+last_plot() + xlab("Anzahl")
+last_plot() + ylab("Leistungssart")
+last_plot() + theme(legend.position = "top", legend.direction="horizontal")
+last_plot() + theme(axis.text.x = element_text(size = 12, hjust=1))
+```
+
+
+```{r}
+ggplot(data=df.leistungsarten.anzahl.adhoc.plot, aes(x=anzahl_adhoc_leistungsarten, y=leistungsart_names)) +
+  geom_bar(stat="identity", color="cornflowerblue", fill="cornflowerblue", width=0.8)+
+  geom_text(aes(label=anzahl_adhoc_leistungsarten), hjust=2, size=3.5)+
+  theme_minimal()
+last_plot() + ggtitle("Anzahl Adhoc-Materialbezüge pro Leistungsart")
+last_plot() + theme(plot.title=element_text(size = 14, face="bold"))
+last_plot() + theme(axis.title.x = element_text(size =15))
+last_plot() + theme(axis.title.y = element_text(size =15))
+last_plot() + xlab("Anzahl")
+last_plot() + ylab("Leistungssart")
+last_plot() + theme(legend.position = "top", legend.direction="horizontal")
+last_plot() + theme(axis.text.x = element_text(size = 12, hjust=1))
+```
+
+
+## Visualisierungen Klassifizierungen
+
+Für die Klassifizierungen schliesslich wurden auch noch verschiedene Auswertungen gemacht, wo die oben berechneten Werte miteinander verglichen wurden. Auch hier wurden zuerst die Dataframes definiert, danach die Visualisierungen erstellt.
+
+
+Definition Datenframe Anzahl Materialbezüge pro Klassifizierung
+```{r}
+klassifizierung_names = c("MM_HIBE", 
+                            "MM_BELEUCHTUNG",
+                            "MM_SICHERUNGEN",
+                            "MM_KABELVERBINDUNG",
+                            "MM_SCHRUMPFMATERIA",
+                            "MM_KABEL",
+                            "MM_ROHRMATERIAL",
+                            "MM_SCHALTANLAGEN",
+                            "MM_KABELZUBEHOER",
+                            "MM_KLEIDUNG_PSA",
+                            "MM_STROMVERTEILUNG",
+                            "MM_ABDICHTMATERIAL",
+                            "MM_KABELBEFESTIGUN",
+                            "MM_FREILEITUNG",
+                            "MM_METALLE",
+                            "MM_ERDUNGSMATERIAL",
+                            "MM_INSTALLMAT",
+                            "MM_SCHAECHTE",
+                            "MM_BELEUCH_TRAEGER",
+                            "MM_TRANSFORMATOREN",
+                            "OEB_LAMMAT",
+                            "OEB_BETMAT",
+                            "OEB_LEUMAT",
+                            "ZA",
+                            "ZM",
+                            "ZR",
+                            "Nicht_zuweisbar"
+                            )
+               
+sum_klassifizierung = c(Summe_Klassifizierung_MM_HIBE,
+                           Summe_Klassifizierung_MM_BELEUCHTUNG,
+                           Summe_Klassifizierung_MM_SICHERUNGEN,
+                           Summe_Klassifizierung_MM_KABELVERBINDUNG,
+                           Summe_Klassifizierung_MM_SCHRUMPFMATERIA,
+                           Summe_Klassifizierung_MM_KABEL,
+                           Summe_Klassifizierung_MM_ROHRMATERIAL,
+                           Summe_Klassifizierung_MM_SCHALTANLAGEN,
+                           Summe_Klassifizierung_MM_KABELZUBEHOER,
+                           Summe_Klassifizierung_MM_KLEIDUNG_PSA,
+                           Summe_Klassifizierung_MM_STROMVERTEILUNG,
+                           Summe_Klassifizierung_MM_ABDICHTMATERIAL,
+                           Summe_Klassifizierung_MM_KABELBEFESTIGUN,
+                           Summe_Klassifizierung_MM_FREILEITUNG,
+                           Summe_Klassifizierung_MM_METALLE,
+                           Summe_Klassifizierung_MM_ERDUNGSMATERIAL,
+                           Summe_Klassifizierung_MM_INSTALLMAT,
+                           Summe_Klassifizierung_MM_SCHAECHTE,
+                           Summe_Klassifizierung_MM_BELEUCH_TRAEGER,
+                           Summe_Klassifizierung_MM_TRANSFORMATOREN,
+                           Summe_Klassifizierung_OEB_LAMMAT,
+                           Summe_Klassifizierung_OEB_BETMAT,
+                           Summe_Klassifizierung_OEB_LEUMAT,
+                           Summe_Klassifizierung_ZA,
+                           Summe_Klassifizierung_ZM,
+                           Summe_Klassifizierung_ZR,
+                           Summe_Klassifizierung_Nicht_zuweisbar
+                           )
+               
+df.klassifizierung.sum.plot = data.frame(sum_klassifizierung,klassifizierung_names)
+```
+
+
+Definition Datenframe Mittelwert Differenz Reservation und Materialbezug pro Klassifizierung
+```{r}
+klassifizierung_names = c("MM_HIBE", 
+                            "MM_BELEUCHTUNG",
+                            "MM_SICHERUNGEN",
+                            "MM_KABELVERBINDUNG",
+                            "MM_SCHRUMPFMATERIA",
+                            "MM_KABEL",
+                            "MM_ROHRMATERIAL",
+                            "MM_SCHALTANLAGEN",
+                            "MM_KABELZUBEHOER",
+                            "MM_KLEIDUNG_PSA",
+                            "MM_STROMVERTEILUNG",
+                            "MM_ABDICHTMATERIAL",
+                            "MM_KABELBEFESTIGUN",
+                            "MM_FREILEITUNG",
+                            "MM_METALLE",
+                            "MM_ERDUNGSMATERIAL",
+                            "MM_INSTALLMAT",
+                            "MM_SCHAECHTE",
+                            "MM_BELEUCH_TRAEGER",
+                            "MM_TRANSFORMATOREN",
+                            "OEB_LAMMAT",
+                            "OEB_BETMAT",
+                            "OEB_LEUMAT",
+                            "ZA",
+                            "ZM",
+                            "ZR",
+                            "Nicht_zuweisbar"
+                            )
+               
+mean_klassifizierung = c(Mittelwert_Klassifizierung_MM_HIBE,
+                           Mittelwert_Klassifizierung_MM_BELEUCHTUNG,
+                           Mittelwert_Klassifizierung_MM_SICHERUNGEN,
+                           Mittelwert_Klassifizierung_MM_KABELVERBINDUNG,
+                           Mittelwert_Klassifizierung_MM_SCHRUMPFMATERIA,
+                           Mittelwert_Klassifizierung_MM_KABEL,
+                           Mittelwert_Klassifizierung_MM_ROHRMATERIAL,
+                           Mittelwert_Klassifizierung_MM_SCHALTANLAGEN,
+                           Mittelwert_Klassifizierung_MM_KABELZUBEHOER,
+                           Mittelwert_Klassifizierung_MM_KLEIDUNG_PSA,
+                           Mittelwert_Klassifizierung_MM_STROMVERTEILUNG,
+                           Mittelwert_Klassifizierung_MM_ABDICHTMATERIAL,
+                           Mittelwert_Klassifizierung_MM_KABELBEFESTIGUN,
+                           Mittelwert_Klassifizierung_MM_FREILEITUNG,
+                           Mittelwert_Klassifizierung_MM_METALLE,
+                           Mittelwert_Klassifizierung_MM_ERDUNGSMATERIAL,
+                           Mittelwert_Klassifizierung_MM_INSTALLMAT,
+                           Mittelwert_Klassifizierung_MM_SCHAECHTE,
+                           Mittelwert_Klassifizierung_MM_BELEUCH_TRAEGER,
+                           Mittelwert_Klassifizierung_MM_TRANSFORMATOREN,
+                           Mittelwert_Klassifizierung_OEB_LAMMAT,
+                           Mittelwert_Klassifizierung_OEB_BETMAT,
+                           Mittelwert_Klassifizierung_OEB_LEUMAT,
+                           Mittelwert_Klassifizierung_ZA,
+                           Mittelwert_Klassifizierung_ZM,
+                           Mittelwert_Klassifizierung_ZR,
+                           Mittelwert_Klassifizierung_Nicht_zuweisbar
+                           )
+               
+df.klassifizierung.mean.plot = data.frame(round(mean_klassifizierung, digits = 2),klassifizierung_names)
+```
+
+
+Definition Datenframe Median Differenz Reservation und Materialbezug pro Klassifizierung
+```{r}
+klassifizierung_names = c("MM_HIBE", 
+                            "MM_BELEUCHTUNG",
+                            "MM_SICHERUNGEN",
+                            "MM_KABELVERBINDUNG",
+                            "MM_SCHRUMPFMATERIA",
+                            "MM_KABEL",
+                            "MM_ROHRMATERIAL",
+                            "MM_SCHALTANLAGEN",
+                            "MM_KABELZUBEHOER",
+                            "MM_KLEIDUNG_PSA",
+                            "MM_STROMVERTEILUNG",
+                            "MM_ABDICHTMATERIAL",
+                            "MM_KABELBEFESTIGUN",
+                            "MM_FREILEITUNG",
+                            "MM_METALLE",
+                            "MM_ERDUNGSMATERIAL",
+                            "MM_INSTALLMAT",
+                            "MM_SCHAECHTE",
+                            "MM_BELEUCH_TRAEGER",
+                            "MM_TRANSFORMATOREN",
+                            "OEB_LAMMAT",
+                            "OEB_BETMAT",
+                            "OEB_LEUMAT",
+                            "ZA",
+                            "ZM",
+                            "ZR",
+                            "Nicht_zuweisbar"
+                            )
+               
+median_klassifizierung = c(Median_Klassifizierung_MM_HIBE,
+                           Median_Klassifizierung_MM_BELEUCHTUNG,
+                           Median_Klassifizierung_MM_SICHERUNGEN,
+                           Median_Klassifizierung_MM_KABELVERBINDUNG,
+                           Median_Klassifizierung_MM_SCHRUMPFMATERIA,
+                           Median_Klassifizierung_MM_KABEL,
+                           Median_Klassifizierung_MM_ROHRMATERIAL,
+                           Median_Klassifizierung_MM_SCHALTANLAGEN,
+                           Median_Klassifizierung_MM_KABELZUBEHOER,
+                           Median_Klassifizierung_MM_KLEIDUNG_PSA,
+                           Median_Klassifizierung_MM_STROMVERTEILUNG,
+                           Median_Klassifizierung_MM_ABDICHTMATERIAL,
+                           Median_Klassifizierung_MM_KABELBEFESTIGUN,
+                           Median_Klassifizierung_MM_FREILEITUNG,
+                           Median_Klassifizierung_MM_METALLE,
+                           Median_Klassifizierung_MM_ERDUNGSMATERIAL,
+                           Median_Klassifizierung_MM_INSTALLMAT,
+                           Median_Klassifizierung_MM_SCHAECHTE,
+                           Median_Klassifizierung_MM_BELEUCH_TRAEGER,
+                           Median_Klassifizierung_MM_TRANSFORMATOREN,
+                           Median_Klassifizierung_OEB_LAMMAT,
+                           Median_Klassifizierung_OEB_BETMAT,
+                           Median_Klassifizierung_OEB_LEUMAT,
+                           Median_Klassifizierung_ZA,
+                           Median_Klassifizierung_ZM,
+                           Median_Klassifizierung_ZR,
+                           Median_Klassifizierung_Nicht_zuweisbar
+                           )
+               
+df.klassifizierung.median.plot = data.frame(median_klassifizierung,klassifizierung_names)
+```
+
+
+Definition Datenframe Anzahl Reservationen pro Klassifizierung
+```{r}
+klassifizierung_names = c("MM_HIBE", 
+                            "MM_BELEUCHTUNG",
+                            "MM_SICHERUNGEN",
+                            "MM_KABELVERBINDUNG",
+                            "MM_SCHRUMPFMATERIA",
+                            "MM_KABEL",
+                            "MM_ROHRMATERIAL",
+                            "MM_SCHALTANLAGEN",
+                            "MM_KABELZUBEHOER",
+                            "MM_KLEIDUNG_PSA",
+                            "MM_STROMVERTEILUNG",
+                            "MM_ABDICHTMATERIAL",
+                            "MM_KABELBEFESTIGUN",
+                            "MM_FREILEITUNG",
+                            "MM_METALLE",
+                            "MM_ERDUNGSMATERIAL",
+                            "MM_INSTALLMAT",
+                            "MM_SCHAECHTE",
+                            "MM_BELEUCH_TRAEGER",
+                            "MM_TRANSFORMATOREN",
+                            "OEB_LAMMAT",
+                            "OEB_BETMAT",
+                            "OEB_LEUMAT",
+                            "ZA",
+                            "ZM",
+                            "ZR",
+                            "Nicht_zuweisbar"
+                            )
+               
+anzahl_res_klassifizierung = c(Anzahl_Res_Klassifizierung_MM_HIBE,
+                           Anzahl_Res_Klassifizierung_MM_BELEUCHTUNG,
+                           Anzahl_Res_Klassifizierung_MM_SICHERUNGEN,
+                           Anzahl_Res_Klassifizierung_MM_KABELVERBINDUNG,
+                           Anzahl_Res_Klassifizierung_MM_SCHRUMPFMATERIA,
+                           Anzahl_Res_Klassifizierung_MM_KABEL,
+                           Anzahl_Res_Klassifizierung_MM_ROHRMATERIAL,
+                           Anzahl_Res_Klassifizierung_MM_SCHALTANLAGEN,
+                           Anzahl_Res_Klassifizierung_MM_KABELZUBEHOER,
+                           Anzahl_Res_Klassifizierung_MM_KLEIDUNG_PSA,
+                           Anzahl_Res_Klassifizierung_MM_STROMVERTEILUNG,
+                           Anzahl_Res_Klassifizierung_MM_ABDICHTMATERIAL,
+                           Anzahl_Res_Klassifizierung_MM_KABELBEFESTIGUN,
+                           Anzahl_Res_Klassifizierung_MM_FREILEITUNG,
+                           Anzahl_Res_Klassifizierung_MM_METALLE,
+                           Anzahl_Res_Klassifizierung_MM_ERDUNGSMATERIAL,
+                           Anzahl_Res_Klassifizierung_MM_INSTALLMAT,
+                           Anzahl_Res_Klassifizierung_MM_SCHAECHTE,
+                           Anzahl_Res_Klassifizierung_MM_BELEUCH_TRAEGER,
+                           Anzahl_Res_Klassifizierung_MM_TRANSFORMATOREN,
+                           Anzahl_Res_Klassifizierung_OEB_LAMMAT,
+                           Anzahl_Res_Klassifizierung_OEB_BETMAT,
+                           Anzahl_Res_Klassifizierung_OEB_LEUMAT,
+                           Anzahl_Res_Klassifizierung_ZA,
+                           Anzahl_Res_Klassifizierung_ZM,
+                           Anzahl_Res_Klassifizierung_ZR,
+                           Anzahl_Res_Klassifizierung_Nicht_zuweisbar
+                           )
+               
+df.klassifizierung.anzahl.res.plot = data.frame(anzahl_res_klassifizierung,klassifizierung_names)
+```
+
+
+Definition Datenframe Anzahl Adhoc-Bezüge pro Klassifizierung
+```{r}
+klassifizierung_names = c("MM_HIBE", 
+                            "MM_BELEUCHTUNG",
+                            "MM_SICHERUNGEN",
+                            "MM_KABELVERBINDUNG",
+                            "MM_SCHRUMPFMATERIA",
+                            "MM_KABEL",
+                            "MM_ROHRMATERIAL",
+                            "MM_SCHALTANLAGEN",
+                            "MM_KABELZUBEHOER",
+                            "MM_KLEIDUNG_PSA",
+                            "MM_STROMVERTEILUNG",
+                            "MM_ABDICHTMATERIAL",
+                            "MM_KABELBEFESTIGUN",
+                            "MM_FREILEITUNG",
+                            "MM_METALLE",
+                            "MM_ERDUNGSMATERIAL",
+                            "MM_INSTALLMAT",
+                            "MM_SCHAECHTE",
+                            "MM_BELEUCH_TRAEGER",
+                            "MM_TRANSFORMATOREN",
+                            "OEB_LAMMAT",
+                            "OEB_BETMAT",
+                            "OEB_LEUMAT",
+                            "ZA",
+                            "ZM",
+                            "ZR",
+                            "Nicht_zuweisbar"
+                            )
+               
+anzahl_adhoc_klassifizierung = c(Anzahl_Adhoc_Klassifizierung_MM_HIBE,
+                           Anzahl_Adhoc_Klassifizierung_MM_BELEUCHTUNG,
+                           Anzahl_Adhoc_Klassifizierung_MM_SICHERUNGEN,
+                           Anzahl_Adhoc_Klassifizierung_MM_KABELVERBINDUNG,
+                           Anzahl_Adhoc_Klassifizierung_MM_SCHRUMPFMATERIA,
+                           Anzahl_Adhoc_Klassifizierung_MM_KABEL,
+                           Anzahl_Adhoc_Klassifizierung_MM_ROHRMATERIAL,
+                           Anzahl_Adhoc_Klassifizierung_MM_SCHALTANLAGEN,
+                           Anzahl_Adhoc_Klassifizierung_MM_KABELZUBEHOER,
+                           Anzahl_Adhoc_Klassifizierung_MM_KLEIDUNG_PSA,
+                           Anzahl_Adhoc_Klassifizierung_MM_STROMVERTEILUNG,
+                           Anzahl_Adhoc_Klassifizierung_MM_ABDICHTMATERIAL,
+                           Anzahl_Adhoc_Klassifizierung_MM_KABELBEFESTIGUN,
+                           Anzahl_Adhoc_Klassifizierung_MM_FREILEITUNG,
+                           Anzahl_Adhoc_Klassifizierung_MM_METALLE,
+                           Anzahl_Adhoc_Klassifizierung_MM_ERDUNGSMATERIAL,
+                           Anzahl_Adhoc_Klassifizierung_MM_INSTALLMAT,
+                           Anzahl_Adhoc_Klassifizierung_MM_SCHAECHTE,
+                           Anzahl_Adhoc_Klassifizierung_MM_BELEUCH_TRAEGER,
+                           Anzahl_Adhoc_Klassifizierung_MM_TRANSFORMATOREN,
+                           Anzahl_Adhoc_Klassifizierung_OEB_LAMMAT,
+                           Anzahl_Adhoc_Klassifizierung_OEB_BETMAT,
+                           Anzahl_Adhoc_Klassifizierung_OEB_LEUMAT,
+                           Anzahl_Adhoc_Klassifizierung_ZA,
+                           Anzahl_Adhoc_Klassifizierung_ZM,
+                           Anzahl_Adhoc_Klassifizierung_ZR,
+                           Anzahl_Adhoc_Klassifizierung_Nicht_zuweisbar
+                           )
+               
+df.klassifizierung.anzahl.adhoc.plot = data.frame(anzahl_adhoc_klassifizierung,klassifizierung_names)
+```
+
+
+```{r}
+ggplot(data=df.klassifizierung.sum.plot, aes(x=sum_klassifizierung, y=klassifizierung_names)) +
+  geom_bar(stat="identity", color="cornflowerblue", fill="cornflowerblue", width=0.8)+
+  geom_text(aes(label=sum_klassifizierung), hjust=1, size=3.5)+
+  theme_minimal()
+last_plot() + ggtitle("Anzahl Materialbezüge pro Klassifizierung")
+last_plot() + theme(plot.title=element_text(size = 14, face="bold"))
+last_plot() + theme(axis.title.x = element_text(size =15))
+last_plot() + theme(axis.title.y = element_text(size =15))
+last_plot() + xlab("Anzahl")
+last_plot() + ylab("Klassifizierung")
+last_plot() + theme(legend.position = "top", legend.direction="horizontal")
+last_plot() + theme(axis.text.x = element_text(size = 12, hjust=1))
+```
+
+
+```{r}
+ggplot(data=df.klassifizierung.mean.plot, aes(x=round.mean_klassifizierung..digits...2., y=klassifizierung_names)) +
+  geom_bar(stat="identity", color="cornflowerblue", fill="cornflowerblue", width=0.8)+
+  geom_text(aes(label=round.mean_klassifizierung..digits...2.), hjust=1, size=3.5)+
+  theme_minimal()
+last_plot() + ggtitle("Mittelwerte der Datumsdifferenz zwischen Reservation und Bezug pro Klassifizierung")
+last_plot() + theme(plot.title=element_text(size = 14, face="bold"))
+last_plot() + theme(axis.title.x = element_text(size =15))
+last_plot() + theme(axis.title.y = element_text(size =15))
+last_plot() + xlab("Mittelwert")
+last_plot() + ylab("Klassifizierung")
+last_plot() + theme(legend.position = "top", legend.direction="horizontal")
+last_plot() + theme(axis.text.x = element_text(size = 12, hjust=1))
+```
+
+
+```{r}
+ggplot(data=df.klassifizierung.median.plot, aes(x=median_klassifizierung, y=klassifizierung_names)) +
+  geom_bar(stat="identity", color="cornflowerblue", fill="cornflowerblue", width=0.8)+
+  geom_text(aes(label=median_klassifizierung), hjust=1, size=3.5)+
+  theme_minimal()
+last_plot() + ggtitle("Median der Datumsdifferenz zwischen Reservation und Bezug pro Klassifizierung")
+last_plot() + theme(plot.title=element_text(size = 14, face="bold"))
+last_plot() + theme(axis.title.x = element_text(size =15))
+last_plot() + theme(axis.title.y = element_text(size =15))
+last_plot() + xlab("Median")
+last_plot() + ylab("Klassifizierung")
+last_plot() + theme(legend.position = "top", legend.direction="horizontal")
+last_plot() + theme(axis.text.x = element_text(size = 12, hjust=1))
+```
+
+
+```{r}
+ggplot(data=df.klassifizierung.anzahl.res.plot, aes(x=anzahl_res_klassifizierung, y=klassifizierung_names)) +
+  geom_bar(stat="identity", color="cornflowerblue", fill="cornflowerblue", width=0.8)+
+  geom_text(aes(label=anzahl_res_klassifizierung), hjust=1, size=3.5)+
+  theme_minimal()
+last_plot() + ggtitle("Anzahl Reservierungen pro Klassifizierung")
+last_plot() + theme(plot.title=element_text(size = 14, face="bold"))
+last_plot() + theme(axis.title.x = element_text(size =15))
+last_plot() + theme(axis.title.y = element_text(size =15))
+last_plot() + xlab("Anzahl")
+last_plot() + ylab("Klassifizierung")
+last_plot() + theme(legend.position = "top", legend.direction="horizontal")
+last_plot() + theme(axis.text.x = element_text(size = 12, hjust=1))
+```
+
+
+```{r}
+ggplot(data=df.klassifizierung.anzahl.adhoc.plot, aes(x=anzahl_adhoc_klassifizierung, y=klassifizierung_names)) +
+  geom_bar(stat="identity", color="cornflowerblue", fill="cornflowerblue", width=0.8)+
+  geom_text(aes(label=anzahl_adhoc_klassifizierung), hjust=1, size=3.5)+
+  theme_minimal()
+last_plot() + ggtitle("Anzahl Adhoc-Materialbezüge pro Klassifizierung")
+last_plot() + theme(plot.title=element_text(size = 14, face="bold"))
+last_plot() + theme(axis.title.x = element_text(size =15))
+last_plot() + theme(axis.title.y = element_text(size =15))
+last_plot() + xlab("Anzahl")
+last_plot() + ylab("Klassifizierung")
+last_plot() + theme(legend.position = "top", legend.direction="horizontal")
+last_plot() + theme(axis.text.x = element_text(size = 12, hjust=1))
+```
+
+
