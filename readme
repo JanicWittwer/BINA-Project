@@ -17,13 +17,14 @@ Gerne möchten wir hier kurz hier die Struktur der hochgeladenen Daten erklären
 
 WICHTIGER HINWEIS:
 Sollten die Programmierungen selbstständig simuliert werden sollen, müssen zuerst unbedingt die notwendigen Packages
-heruntergeladen werden und danach der Pfad der Excel-Datei entsprechend angepasst werden. Ansonsten werden die Daten
-nicht korrekt geladen werden.
+heruntergeladen werden (Zeile 13-18) und danach der Pfad der Excel-Datei entsprechend angepasst werden (Zeile 29). Ansonsten können die Daten
+nicht korrekt geladen werden. Im Anschluss empfiehlt es sich, die verschiedenen Programmierungen schrittweise durchzuspielen, da ansonsten
+möglicherweise nicht alle Dataframes oder Variablen erstellt werden, welche dann für weitere Funktionen benötigt werden.
 
 Nun wünschen wir eine gute Lektüre!
 
 
-Viele liebe Grüsse,
+Beste Grüsse,
 
 Projektteam
 Jasmin Hofstetter, Milovan Stevanovic, Janic Wittwer
